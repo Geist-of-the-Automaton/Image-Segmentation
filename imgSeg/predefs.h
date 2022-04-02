@@ -13,6 +13,9 @@ using std::chrono::duration_cast;
 using std::chrono::high_resolution_clock;
 using std::chrono::milliseconds;
 
+const int threadCnt = QThread::idealThreadCount();
+
+const QString views[] = {"og", "ogEdge", "processedEdge", "processed"};
 const vector <string> acceptedImportImageFormats = {"bmp", "jpg", "jpeg", "png", "ppm", "xbm", "xpm", "gif", "pbm", "pgm"};
 
 const double pi = 3.14159265359;

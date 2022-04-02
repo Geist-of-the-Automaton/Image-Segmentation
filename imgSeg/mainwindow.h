@@ -10,6 +10,7 @@
 #include <QPainter>
 #include <QInputDialog>
 #include <QLabel>
+#include <QThread>
 
 #include <predefs.h>
 
@@ -41,22 +42,24 @@ public:
     MainWindow(QWidget *parent = nullptr);
     void keyPressEvent(QKeyEvent *event);
     void paintEvent(QPaintEvent *event);
-    vector< vector<float> > getBoxBlur(int width);
-    vector< vector<float> > getConeBlur(int width);
+    static vector< vector<float> > getBoxBlur(int width);
+    static vector< vector<float> > getConeBlur(int width);
     void compute();
     QImage equalize(QImage qi);
     void histogram(eType type);
+    static void applyBlur(QImage processed, QImage *work, QImage edL, int tIndex, int passes);
     ~MainWindow();
 
 private:
     Ui::MainWindow *ui;
 
-    QImage og, edL, ogEd, combo, processed, toDisplay;
+    QImage og, edL, ogEd, combo, processed, toDisplay, work;
     QLabel *histograms;
     int passes;
     QString filename;
     vector< vector<int> > sobel;
     vector< vector<int> > edL_p;
     int w, h;
+    int view;
 };
 #endif // MAINWINDOW_H

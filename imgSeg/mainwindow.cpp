@@ -21,6 +21,8 @@ MainWindow::~MainWindow() {
 
 void MainWindow::keyPressEvent(QKeyEvent *event) {
     Key key = Key(event->key());
+    if (key >= Qt::Key_1 && key <= Qt::Key_4)
+        view = key - Qt::Key_1;
     if (key == Qt::Key_1)
         toDisplay = og;
     else if (key == Qt::Key_2)
@@ -44,7 +46,7 @@ void MainWindow::keyPressEvent(QKeyEvent *event) {
         histograms->show();
     }
     else if (key == Qt::Key_Alt) {
-        processed.save(filename + "_processed_" + to_string(passes).c_str() + ".png");
+        toDisplay.save(filename + "_view_" + views[view] + "_" + to_string(passes).c_str() + ".png");
     }
     else if (key == Qt::Key_Space)
         compute();
@@ -75,7 +77,7 @@ void MainWindow::keyPressEvent(QKeyEvent *event) {
         string fileType = fn.substr(index + 1);
         if (std::find(acceptedImportImageFormats.begin(), acceptedImportImageFormats.end(), fileType) != acceptedImportImageFormats.end())
         og = QImage(fileName);
-        processed = og;
+        processed = og.copy();
         w = og.width();
         h = og.height();
         edL_p = vector< vector<int> > (w, vector<int>(h, 0));
@@ -91,7 +93,7 @@ void MainWindow::paintEvent(QPaintEvent *event) {
     if (toDisplay.isNull())
         return;
     QPainter qp(this);
-    qp.drawImage(0, 0, toDisplay.scaledToWidth(1.75 * toDisplay.width(), Qt::SmoothTransformation));
+    qp.drawImage(0, 0, toDisplay);//toDisplay.scaledToWidth(1.75 * toDisplay.width(), Qt::SmoothTransformation));
 }
 
 vector< vector<float> > MainWindow::getBoxBlur(int width) {
@@ -174,15 +176,45 @@ void MainWindow::compute() {
     if (passes == 1)
         ogEd = edL.copy();
     time = getTime(0);
+    work = processed.copy();
+    vector <QThread *> threads;
+    for (int i = 0; i < threadCnt; ++i)
+        threads.push_back(QThread::create(applyBlur, processed, &work, edL, i, passes));
+    for (QThread * thread : threads)
+        thread->start();
+    applyBlur(processed, &work, edL, -1, passes);
+    for (int i = threadCnt - 1; i >= 0; --i)
+        if (threads[i]->isRunning())
+            threads[i]->wait();
+    cout << "blurring took " << getTime(time) << "ms" << endl;
+    processed = work.copy();
+    ++passes;
+    toDisplay = processed.copy();
+    repaint();
+    QApplication::processEvents();
+    cout << "process complete. passes " << passes << endl;
+}
+
+void MainWindow::applyBlur(QImage processed, QImage *work, QImage edL, int tIndex, int passes) {
+    int kWidth = 1 + 2 * (passes / 2), offset = kWidth / 2;
     vector< vector<float> > blur = getConeBlur(kWidth);
-    cout << "create cone blur took " << getTime(time) << "ms" << endl;
-    time = getTime(0);
-    QImage work = processed;
+    int width = processed.width(), height = processed.height();
+    int lines = height / threadCnt;
     int diff = (3 * passes) / 2;
-    for (int j = 0; j < h; ++j) {
+    int start, end;
+    if (tIndex == -1) {
+        start = threadCnt * lines;
+        end = height;
+    }
+    else {
+        start = tIndex * lines;
+        end = start + lines;
+    }
+    for (int j = start; j < end; ++j) {
         QRgb *line = reinterpret_cast<QRgb *>(processed.scanLine(j));
-        QRgb *line2 = reinterpret_cast<QRgb *>(work.scanLine(j));
-        for (int i = 0; i < w; ++i) {
+        QRgb *line2 = reinterpret_cast<QRgb *>(work->scanLine(j));
+        QRgb *line4 = reinterpret_cast<QRgb *>(edL.scanLine(j));
+        for (int i = 0; i < width; ++i) {
             float rt = 0.0, gt = 0.0, bt = 0.0;
             QColor qc(line[i]), center = qc;
             int huePro = qc.hslHue() + 1;
@@ -191,10 +223,10 @@ void MainWindow::compute() {
             for (int n = 0; n < kWidth; ++n) {
                 QRgb *line3 = nullptr;
                 int J = (n - offset) + j;
-                if (J >= 0 && J < h)
-                    line3 = reinterpret_cast<QRgb *>(work.scanLine((n - offset) + j));
+                if (J >= 0 && J < height)
+                    line3 = reinterpret_cast<QRgb *>(work->scanLine((n - offset) + j));
                 for (int m = 0; m < kWidth; ++m) {
-                    if ((m - offset) + i < 0 || (m - offset) + i >= w || line3 == nullptr)
+                    if ((m - offset) + i < 0 || (m - offset) + i >= width || line3 == nullptr)
                         qc = center;
                     else {
                         qc = line3[(m - offset) + i];
@@ -214,7 +246,7 @@ void MainWindow::compute() {
                 }
             }
             qc = center;
-            QColor dL = edL.pixelColor(i, j);
+            QColor dL(line4[i]);
             float rd = dL.redF();
             rt = qc.redF() * (1.0 - rd) + rt * rd;
             float gd = dL.greenF();
@@ -225,13 +257,6 @@ void MainWindow::compute() {
             line2[i] = qc.rgba();
         }
     }
-    cout << "blurring took " << getTime(time) << "ms" << endl;
-    processed = work;
-    ++passes;
-    toDisplay = processed.copy();
-    repaint();
-    QApplication::processEvents();
-    cout << "process complete. passes " << passes << endl;
 }
 
 QImage MainWindow::equalize(QImage qi) {
@@ -271,7 +296,6 @@ QImage MainWindow::equalize(QImage qi) {
                 qi.setPixelColor(x, y, QColor(lut[qc.red()], lut[qc.green()], lut[qc.blue()]));
         }
     }
-
     return qi;
 }
 
