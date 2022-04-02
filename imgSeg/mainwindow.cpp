@@ -5,8 +5,8 @@ MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
 {
-    setWindowTitle("8810 Preprocessor");
     ui->setupUi(this);
+    setWindowTitle("8810 Preprocessor");
     passes = 1;
     histograms = new QLabel();
     sobel.push_back({-1, -2, -1});
@@ -52,9 +52,12 @@ void MainWindow::keyPressEvent(QKeyEvent *event) {
         bool ok = false;
         int ret = QInputDialog::getInt(this, "8810", "Process cycles to complete", 0, 0, 20, 1, &ok);
         if (ok)
-            for (int i = 0; i < ret; ++i)
+            for (int i = 0; i < ret; ++i) {
+                ui->statusbar->showMessage(QString(to_string(passes).c_str()) + " cycles of " + QString(to_string(passes + (ret - i)).c_str()) + " completed");
                 compute();
+            }
         cout << "batch complete" << endl;
+        QApplication::beep();
     }
     else if (key == Qt::Key_Shift) {
         passes = 1;
@@ -66,6 +69,7 @@ void MainWindow::keyPressEvent(QKeyEvent *event) {
         if (fileName == "")
             return;
         string fn = fileName.toStdString();
+        setWindowTitle("8810 Preprocessor - " + QString(fn.substr(fn.find_last_of('/') + 1).c_str()));
         size_t index = fn.find_last_of('.');
         filename = fn.substr(0, index).c_str();
         string fileType = fn.substr(index + 1);
@@ -79,12 +83,15 @@ void MainWindow::keyPressEvent(QKeyEvent *event) {
         compute();
         toDisplay = og;
     }
+    ui->statusbar->showMessage(QString(to_string(passes).c_str()) + " cycles completed");
     repaint();
 }
 
 void MainWindow::paintEvent(QPaintEvent *event) {
+    if (toDisplay.isNull())
+        return;
     QPainter qp(this);
-    qp.drawImage(0, 0, toDisplay);
+    qp.drawImage(0, 0, toDisplay.scaledToWidth(1.75 * toDisplay.width(), Qt::SmoothTransformation));
 }
 
 vector< vector<float> > MainWindow::getBoxBlur(int width) {
@@ -122,15 +129,18 @@ void MainWindow::compute() {
     long long time;
     if (passes >= 1) {
         time = getTime(0);
-        for (int i = 0; i < w; ++i)
-            for (int j = 0; j < h; ++j) {
-                QColor qc = processed.pixelColor(i, j);
+        for (int j = 0; j < h; ++j) {
+            QRgb *line = reinterpret_cast<QRgb *>(processed.scanLine(j));
+            for (int i = 0; i < w; ++i) {
+                QColor qc(line[i]);
                 edL_p[i][j] = (qc.red() + qc.green() + qc.blue()) / 3;
             }
+        }
         cout << "edL_p initialization took " << getTime(time) << "ms" << endl;
         time = getTime(0);
-        for (int i = 0; i < w; ++i)
-            for (int j = 0; j < h; ++j) {
+        for (int j = 0; j < h; ++j) {
+            QRgb *line = reinterpret_cast<QRgb *>(edL.scanLine(j));
+            for (int i = 0; i < w; ++i) {
                 int totalL_1 = 0, totalL_2 = 0;
                 for (int m = 0; m < 3; ++m)
                     for (int n = 0; n < 3; ++n) {
@@ -145,19 +155,20 @@ void MainWindow::compute() {
                     }
                 int lit = static_cast<int>(sqrt(static_cast<double>(totalL_1 * totalL_1 + totalL_2 * totalL_2)) * scale);
                 lit = 255 - ((lit >> (oShift)) << (oShift));
-                edL.setPixelColor(i, j, QColor(lit, lit, lit));
+                line[i] = 0xFF000000 | (lit << 16) | (lit << 8) | lit;
             }
+        }
         cout << "edge detection took " << getTime(time) << "ms" << endl;
         time = getTime(0);
         edL = equalize(edL);
         cout << "equalization took " << getTime(time) << "ms" << endl;
         time = getTime(0);
-        for (int i = 0; i < w; ++i)
-            for (int j = 0; j < h; ++j) {
-                QColor qc = edL.pixelColor(i, j);
-                if (qc.red() < (256 >> oShift))
-                    edL.setPixel(i, j, 0xFF000000);
-            }
+        for (int j = 0; j < h; ++j) {
+            QRgb *line = reinterpret_cast<QRgb *>(edL.scanLine(j));
+            for (int i = 0; i < w; ++i)
+                if (QColor(line[i]).red() < (256 >> oShift))
+                    line[i] = 0xFF000000;
+        }
         cout << "trimming took " << getTime(time) << "ms" << endl;
     }
     if (passes == 1)
@@ -168,34 +179,41 @@ void MainWindow::compute() {
     time = getTime(0);
     QImage work = processed;
     int diff = (3 * passes) / 2;
-    for (int i = 0; i < w; ++i)
-        for (int j = 0; j < h; ++j) {
+    for (int j = 0; j < h; ++j) {
+        QRgb *line = reinterpret_cast<QRgb *>(processed.scanLine(j));
+        QRgb *line2 = reinterpret_cast<QRgb *>(work.scanLine(j));
+        for (int i = 0; i < w; ++i) {
             float rt = 0.0, gt = 0.0, bt = 0.0;
-            QColor qc = processed.pixelColor(i, j);
+            QColor qc(line[i]), center = qc;
             int huePro = qc.hslHue() + 1;
             int satPro = qc.hslSaturation();
             int valPro = qc.lightness();
-            for (int m = 0; m < kWidth; ++m)
-                for (int n = 0; n < kWidth; ++n) {
-                    if ((m - offset) + i < 0 || (m - offset) + i >= w || (n - offset) + j < 0 || (n - offset) + j >= h)
-                        qc = processed.pixelColor(i, j);
+            for (int n = 0; n < kWidth; ++n) {
+                QRgb *line3 = nullptr;
+                int J = (n - offset) + j;
+                if (J >= 0 && J < h)
+                    line3 = reinterpret_cast<QRgb *>(work.scanLine((n - offset) + j));
+                for (int m = 0; m < kWidth; ++m) {
+                    if ((m - offset) + i < 0 || (m - offset) + i >= w || line3 == nullptr)
+                        qc = center;
                     else {
-                        qc = processed.pixelColor((m - offset) + i, (n - offset) + j);
+                        qc = line3[(m - offset) + i];
                         int hue = qc.hslHue() + 1;
                         int sat = qc.hslSaturation();
                         int val = qc.lightness();
                         if (abs(huePro - hue) > 180)
                             hue -= 360;
                         if (abs(huePro - hue) <= diff && abs(satPro - sat) <= passes * satDiffMult && abs(valPro - val) <= passes * litDiffMult)// - passes)
-                            qc = processed.pixelColor((m - offset) + i, (n - offset) + j);
+                            qc = line3[(m - offset) + i];
                         else
-                            qc = processed.pixelColor(i, j);
+                            qc = center;
                     }
                     rt += blur[m][n] * qc.redF();
                     gt += blur[m][n] * qc.greenF();
                     bt += blur[m][n] * qc.blueF();
                 }
-            qc = processed.pixelColor(i, j);
+            }
+            qc = center;
             QColor dL = edL.pixelColor(i, j);
             float rd = dL.redF();
             rt = qc.redF() * (1.0 - rd) + rt * rd;
@@ -204,8 +222,9 @@ void MainWindow::compute() {
             float bd = dL.blueF();
             bt = qc.blueF() * (1.0 - bd) + bt * bd;
             qc.setRgbF(rt, gt, bt, qc.alphaF());
-            work.setPixelColor(i, j, qc);
+            line2[i] = qc.rgba();
         }
+    }
     cout << "blurring took " << getTime(time) << "ms" << endl;
     processed = work;
     ++passes;
@@ -218,40 +237,41 @@ void MainWindow::compute() {
 QImage MainWindow::equalize(QImage qi) {
     int W = qi.width(), H = qi.height();
     //normalize into 0-255 range
-    int histo[bins];
-    for (int i = 0; i < bins; ++i)
-        histo[i] = 0;
+    int histo[bins] = {0};
     // Fill the array(s) tht the histograms will be constructed from.
     int total = 0;
-    for (int x = 0; x < W; ++x)
-        for (int y = 0; y < H; ++y) {
-            QColor qc = qi.pixelColor(x, y);
+    for (int y = 0; y < H; ++y) {
+        QRgb *line = reinterpret_cast<QRgb *>(qi.scanLine(y));
+        for (int x = 0; x < W; ++x) {
+            QColor qc(line[x]);
             if (qc.alpha() != 0) {
                 int value = (qc.red() + qc.green() + qc.blue()) / 3;
                 ++total;
                 ++histo[value];
             }
         }
+    }
     int i = 0;
     while (i < bins && histo[i] == 0)
         ++i;
     if (i == bins || histo[i] == total)
         return qi;
     float scale = static_cast<double>(bins - 1) / static_cast<double>(total - histo[i]);
-    int lut[bins];
-    for (int j = 0; j < bins; ++j)
-        lut[j] = 0;
+    int lut[bins] = {0};
     int sum = 0;
     for (++i; i < bins; ++i) {
         sum += histo[i];
         lut[i] = static_cast<int>(static_cast<float>(sum) * scale);
     }
-    for (int x = 0; x < W; ++x)
-        for (int y = 0; y < H; ++y) {
-            QColor qc = qi.pixelColor(x, y);
+    for (int y = 0; y < H; ++y) {
+        QRgb *line = reinterpret_cast<QRgb *>(qi.scanLine(y));
+        for (int x = 0; x < W; ++x) {
+            QColor qc(line[x]);
             if (qc.alpha() != 0)
                 qi.setPixelColor(x, y, QColor(lut[qc.red()], lut[qc.green()], lut[qc.blue()]));
         }
+    }
+
     return qi;
 }
 
@@ -261,10 +281,7 @@ void MainWindow::histogram(eType type) {
     histograms->resize(qi.width(), qi.height());
     histograms->setWindowFilePath("Histogram");
     qi.fill(0xFF000000);
-    int histo[4][bins];
-    for (int x = 0; x < bins; ++x)
-        for (int y = 0; y < 4; ++y)
-            histo[y][x] = 0;
+    int histo[4][bins] = {{0}, {0}, {0}, {0}};
     QImage image = toDisplay.copy();
     // Fill the array(s) tht the histograms will be constructed from.
     int total = 0;
