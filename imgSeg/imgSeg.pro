@@ -10,11 +10,14 @@ CONFIG += c++11
 
 SOURCES += \
     main.cpp \
-    mainwindow.cpp
+    mainwindow.cpp \
+    sensitivitydialog.cpp
 
 HEADERS += \
     mainwindow.h \
-    predefs.h
+    predefs.h \
+    sensitivitydialog.h \
+    ui_sensitivitydialog.h
 
 FORMS += \
     mainwindow.ui

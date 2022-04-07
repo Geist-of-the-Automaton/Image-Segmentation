@@ -12,23 +12,8 @@
 #include <QLabel>
 #include <QThread>
 
+#include <sensitivitydialog.h>
 #include <predefs.h>
-
-#include <iostream>
-#include <vector>
-#include <cmath>
-#include <string>
-#include <list>
-
-using Qt::Key;
-using std::cout;
-using std::endl;
-using std::vector;
-using std::max;
-using std::min;
-using std::string;
-using std::to_string;
-using std::list;
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
@@ -42,24 +27,29 @@ public:
     MainWindow(QWidget *parent = nullptr);
     void keyPressEvent(QKeyEvent *event);
     void paintEvent(QPaintEvent *event);
-    static vector< vector<float> > getBoxBlur(int width);
-    static vector< vector<float> > getConeBlur(int width);
+    static fMat getBoxBlur(int width);
+    static fMat getConeBlur(int width);
     void compute();
     QImage equalize(QImage qi);
     void histogram(eType type);
     static void applyBlur(QImage processed, QImage *work, QImage edL, int tIndex, int passes);
+    QImage kmeans(vector <QColor> centers, int iterations, eType type);
+    static int colorDistance(QColor m, QColor n, eType type);
+    static vector <float> rgb2lab (QColor qc);
+    static QColor lab2rgb(vector <float> lab);
+    static vector <float> getLabScaled(vector <float> lab);
     ~MainWindow();
 
 private:
     Ui::MainWindow *ui;
 
-    QImage og, edL, ogEd, combo, processed, toDisplay, work;
+    QImage og, edL, ogEd, combo, processed, toDisplay, work, segmented;
     QLabel *histograms;
     int passes;
     QString filename;
-    vector< vector<int> > sobel;
-    vector< vector<int> > edL_p;
+    iMat edL_p;
     int w, h;
     int view;
+    float dispScale;
 };
 #endif // MAINWINDOW_H
