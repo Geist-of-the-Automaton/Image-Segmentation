@@ -21,6 +21,8 @@ void MainWindow::keyPressEvent(QKeyEvent *event) {
     Key key = Key(event->key());
     if (key >= Qt::Key_1 && key <= Qt::Key_4)
         view = key - Qt::Key_1;
+    else if (key == Qt::Key_7 || key == Qt::Key_6)
+        view = 4;
     if (key == Qt::Key_1)
         toDisplay = og;
     else if (key == Qt::Key_2)
@@ -57,7 +59,9 @@ void MainWindow::keyPressEvent(QKeyEvent *event) {
         sensitivityDialog sd(this);
         eType type = eType(eTypes.indexOf(kerPrompt.textValue()));
         sd.setWork(processed, type);
-        sd.exec();
+        execCode = sd.exec();
+        if (execCode == 0)
+            return;
         bool ok = false;
         int ret = QInputDialog::getInt(this, "8810", "kmean iterations to complete", 0, 0, 500, 1, &ok);
         if (ok)
@@ -106,9 +110,9 @@ void MainWindow::keyPressEvent(QKeyEvent *event) {
         toDisplay = og;
     }
     else if (key == Qt::Key_Left)
-        dispScale -= 0.1;
+        dispScale -= 0.1f;
     else if (key == Qt::Key_Right)
-        dispScale += 0.1;
+        dispScale += 0.1f;
     ui->statusbar->showMessage(QString(to_string(passes).c_str()) + " cycles completed");
     repaint();
 }
@@ -121,20 +125,20 @@ void MainWindow::paintEvent(QPaintEvent *event) {
 }
 
 fMat MainWindow::getBoxBlur(int width) {
-    float w = static_cast<float>(width * width);
+    float w = tof(width * width);
     vector<float> sub(width, 1.0 / w);
     return fMat (width, sub);
 }
 
 fMat MainWindow::getConeBlur(int width) {
-    float r = static_cast<float>(width) / 2.0;
+    float r = tof(width) / 2.0;
     fMat vec(width, vector<float>(width, 0.0));
     float cnt = 0.0;
     for (int i = 0; i < width; ++i) {
-        int I = i - static_cast<int>(r);
+        int I = i - toi(r);
         for (int j = 0; j < width; ++j) {
-            int J = j - static_cast<int>(r);
-            float dist = sqrt(static_cast<float>(I * I + J * J));
+            int J = j - toi(r);
+            float dist = sqrt(tof(I * I + J * J));
             if (dist <= r) {
                 vec[i][j] = (r - dist);
                 cnt += vec[i][j];
@@ -152,50 +156,48 @@ void MainWindow::compute() {
         return;
     int oShift = sqrt(passes);
     long long time;
-    if (passes >= 1) {
-        time = getTime(0);
-        for (int j = 0; j < h; ++j) {
-            QRgb *line = reinterpret_cast<QRgb *>(processed.scanLine(j));
-            for (int i = 0; i < w; ++i) {
-                QColor qc(line[i]);
-                edL_p[i][j] = (qc.red() + qc.green() + qc.blue()) / 3;
-            }
+    time = getTime(0);
+    for (int j = 0; j < h; ++j) {
+        QRgb *line = reinterpret_cast<QRgb *>(processed.scanLine(j));
+        for (int i = 0; i < w; ++i) {
+            QColor qc(line[i]);
+            edL_p[i][j] = (qc.red() + qc.green() + qc.blue()) / 3;
         }
-        cout << "edL_p initialization took " << getTime(time) << "ms" << endl;
-        time = getTime(0);
-        for (int j = 0; j < h; ++j) {
-            QRgb *line = reinterpret_cast<QRgb *>(edL.scanLine(j));
-            for (int i = 0; i < w; ++i) {
-                int totalL_1 = 0, totalL_2 = 0;
-                for (int m = 0; m < 3; ++m)
-                    for (int n = 0; n < 3; ++n) {
-                        if ((m - 1) + i < 0 || (n - 1) + j < 0 || (m - 1) + i >= w || (n - 1) + j >= h) {
-                            totalL_1 += sobel[m][n] * edL_p[i][j];
-                            totalL_2 += sobel[n][m] * edL_p[i][j];
-                        }
-                        else {
-                            totalL_1 += sobel[m][n] * edL_p[(m - 1) + i][(n - 1) + j];
-                            totalL_2 += sobel[n][m] * edL_p[(m - 1) + i][(n - 1) + j];
-                        }
-                    }
-                int lit = static_cast<int>(sqrt(static_cast<double>(totalL_1 * totalL_1 + totalL_2 * totalL_2)) * scale);
-                lit = 255 - ((lit >> (oShift)) << (oShift));
-                line[i] = 0xFF000000 | (lit << 16) | (lit << 8) | lit;
-            }
-        }
-        cout << "edge detection took " << getTime(time) << "ms" << endl;
-        time = getTime(0);
-        edL = equalize(edL);
-        cout << "equalization took " << getTime(time) << "ms" << endl;
-        time = getTime(0);
-        for (int j = 0; j < h; ++j) {
-            QRgb *line = reinterpret_cast<QRgb *>(edL.scanLine(j));
-            for (int i = 0; i < w; ++i)
-                if (QColor(line[i]).red() < (256 >> oShift))
-                    line[i] = 0xFF000000;
-        }
-        cout << "trimming took " << getTime(time) << "ms" << endl;
     }
+    cout << "edL_p initialization took " << getTime(time) << "ms" << endl;
+    time = getTime(0);
+    for (int j = 0; j < h; ++j) {
+        QRgb *line = reinterpret_cast<QRgb *>(edL.scanLine(j));
+        for (int i = 0; i < w; ++i) {
+            int totalL_1 = 0, totalL_2 = 0;
+            for (int m = 0; m < 3; ++m)
+                for (int n = 0; n < 3; ++n) {
+                    if ((m - 1) + i < 0 || (n - 1) + j < 0 || (m - 1) + i >= w || (n - 1) + j >= h) {
+                        totalL_1 += sobel[m][n] * edL_p[i][j];
+                        totalL_2 += sobel[n][m] * edL_p[i][j];
+                    }
+                    else {
+                        totalL_1 += sobel[m][n] * edL_p[(m - 1) + i][(n - 1) + j];
+                        totalL_2 += sobel[n][m] * edL_p[(m - 1) + i][(n - 1) + j];
+                    }
+                }
+            int lit = toi(sqrt(tod(totalL_1 * totalL_1 + totalL_2 * totalL_2)) * scale);
+            lit = 255 - ((lit >> (oShift)) << (oShift));
+            line[i] = 0xFF000000 | (lit << 16) | (lit << 8) | lit;
+        }
+    }
+    cout << "edge detection took " << getTime(time) << "ms" << endl;
+    time = getTime(0);
+    edL = equalize(edL);
+    cout << "equalization took " << getTime(time) << "ms" << endl;
+    time = getTime(0);
+    for (int j = 0; j < h; ++j) {
+        QRgb *line = reinterpret_cast<QRgb *>(edL.scanLine(j));
+        for (int i = 0; i < w; ++i)
+            if (QColor(line[i]).red() < (256 >> oShift))
+                line[i] = 0xFF000000;
+    }
+    cout << "trimming took " << getTime(time) << "ms" << endl;
     if (passes == 1)
         ogEd = edL.copy();
     time = getTime(0);
@@ -304,12 +306,12 @@ QImage MainWindow::equalize(QImage qi) {
         ++i;
     if (i == bins || histo[i] == total)
         return qi;
-    float scale = static_cast<double>(bins - 1) / static_cast<double>(total - histo[i]);
+    float scale = tof(bins - 1) / tof(total - histo[i]);
     int lut[bins] = {0};
     int sum = 0;
     for (++i; i < bins; ++i) {
         sum += histo[i];
-        lut[i] = static_cast<int>(static_cast<float>(sum) * scale);
+        lut[i] = toi(tof(sum) * scale);
     }
     for (int y = 0; y < H; ++y) {
         QRgb *line = reinterpret_cast<QRgb *>(qi.scanLine(y));
@@ -333,30 +335,37 @@ void MainWindow::histogram(eType type) {
     QImage image = toDisplay.copy();
     // Fill the array(s) tht the histograms will be constructed from.
     int total = 0;
-    for (int x = 0; x < image.width(); ++x)
-        for (int y = 0; y < image.height(); ++y) {
-            QColor qc = image.pixelColor(x, y);
+    for (int y = 0; y < image.height(); ++y) {
+        QRgb *line = reinterpret_cast<QRgb *>(image.scanLine(y));
+        for (int x = 0; x < image.width(); ++x) {
+            QColor qc(line[x]);
             if (qc.alpha() != 0) {
                 if (type == RGB) {
-                    int intensity = static_cast<int>(static_cast<float>(qc.red() + qc.green() + qc.blue()) / 3.0 + 0.5);
+                    int intensity = toi(tof(qc.red() + qc.green() + qc.blue()) / 3.0 + 0.5);
                     ++histo[0][intensity];
                     ++histo[1][qc.red()];
                     ++histo[2][qc.green()];
                     ++histo[3][qc.blue()];
                 }
                 else if (type == HSV) {
-                    ++histo[0][static_cast<int>(255.0 * static_cast<float>(qc.hsvHue() + 1.0) / 360.0)];
-                    ++histo[1][static_cast<int>(255.0 * qc.hsvSaturationF())];
-                    ++histo[2][static_cast<int>(255.0 * qc.valueF())];
+                    ++histo[0][toi(255.0 * tof(qc.hsvHue() + 1.0) / 360.0)];
+                    ++histo[1][toi(255.0 * qc.hsvSaturationF())];
+                    ++histo[2][toi(255.0 * qc.valueF())];
                 }
-                else {
-                    ++histo[0][static_cast<int>(255.0 * static_cast<float>(qc.hslHue() + 1.0) / 360.0)];
-                    ++histo[1][static_cast<int>(255.0 * qc.hslSaturationF())];
-                    ++histo[2][static_cast<int>(255.0 * qc.lightnessF())];
+                else if (type == HSL) {
+                    ++histo[0][toi(255.0 * tof(qc.hslHue() + 1.0) / 360.0)];
+                    ++histo[1][toi(255.0 * qc.hslSaturationF())];
+                    ++histo[2][toi(255.0 * qc.lightnessF())];
+                }
+                else if (type == LAB) {
+                    vector <float> color = getLabScaled(rgb2lab(qc));
+                    for (unsigned char c = 0; c < 3; ++c)
+                        ++histo[c][toi(color[c])];
                 }
                 ++total;
             }
         }
+    }
     int maxI = 0, cutoff = total / 4;
     for (int j = 0; j < end; ++j)
         for (int i = 1; i < bins - 1; ++i)
@@ -364,41 +373,60 @@ void MainWindow::histogram(eType type) {
                 maxI = max(maxI, histo[j][i]);
     // Draw histograms.
     maxI = max(maxI, 1);
-    double div = static_cast<double>(H / 2 - 1) / static_cast<double>(maxI);
-    float fbins = static_cast<float>(bins - 1);
+    double div = tod(H / 2 - 1) / tod(maxI);
+    float fbins = tof(bins - 1);
     for (int x = 0; x < bins; ++x) {
         QRgb value = static_cast<QRgb>(bins + x) / 2;
         for  (int j = 0; j < end; ++j) {
             QRgb color = 0xFF000000;
-            if (type == RGB && j != 0)
-                color += (value << (8 * (2 - (j - 1))));
-            else if (type == HSV && j == 0) {
-                QColor qc(color);
-                qc.setHsvF(static_cast<float>(x) / fbins, 1.0, 1.0);
-                color = qc.rgba();
+            if (type == RGB) {
+                if (j != 0)
+                    color += (value << (8 * (2 - (j - 1))));
+                else
+                    for (unsigned char i = 0; i < 3; ++i)
+                        color += value << (8 * i);
             }
-            else if (type == HSL && j == 0) {
+            else if (type == HSV) {
                 QColor qc(color);
-                qc.setHslF(static_cast<float>(x) / fbins, 1.0, 0.5);
-                color = qc.rgba();
+                if (j == 0) {
+                    qc.setHsvF(tof(x) / fbins, 1.0f, 1.0f);
+                    color = qc.rgba();
+                }
+                else if (j == 1) {
+                    qc.setHsvF(0.3f, tof(x) / fbins, 1.0f);
+                    color = qc.rgba();
+                }
+                else
+                    for (unsigned char i= 0; i < 3; ++i)
+                        color += value << (8 * i);
             }
-            else if (type == HSV && j == 1) {
+            else if (type == HSL) {
                 QColor qc(color);
-                qc.setHsvF(0.3f, static_cast<float>(x) / fbins, 1.0f);
-                color = qc.rgba();
+                if (j == 0) {
+                    qc.setHslF(tof(x) / fbins, 1.0, 0.5);
+                    color = qc.rgba();
+                }
+                else if (j == 1) {
+                    qc.setHslF(0.3f, tof(x) / fbins, 0.5f);
+                    color = qc.rgba();
+                }
+                else
+                    for (unsigned char i= 0; i < 3; ++i)
+                        color += value << (8 * i);
             }
-            else if (type == HSL && j == 1) {
-                QColor qc(color);
-                qc.setHslF(0.3f, static_cast<float>(x) / fbins, 0.5f);
-                color = qc.rgba();
+            else if (type == LAB) {
+                if (j == 0)
+                    for (unsigned char i= 0; i < 3; ++i)
+                        color += value << (8 * i);
+                else if (j == 1)
+                    color = QColor(255 - x, x, 0).rgba();
+                else
+                    color = QColor(255 - x, 255 - x, x).rgba();
             }
-            else if ((type == RGB && j == 0) || (type != RGB && j == 2))
-                for (unsigned char i= 0; i < 3; ++i)
-                    color += value << (8 * i);
             int rowOffset = (H / 2) * (j / 2);
             int colOffset = x + bins * (j % 2);
             int stop = H / 2 + rowOffset;
-            int start = stop - static_cast<int>(static_cast<double>(histo[j][x]) * div);
+            int start = stop - toi(tod(histo[j][x]) * div);
             start = max(start, rowOffset);
             for (int y = start; y < stop; ++y)
                 qi.setPixelColor(colOffset, y, color);
@@ -408,48 +436,56 @@ void MainWindow::histogram(eType type) {
     histograms->setFixedSize(histograms->size());
 }
 
-QImage MainWindow::kmeans(vector<QColor> centers, int num, eType type) {
-    segmented = QImage(processed.size(), QImage::Format_ARGB32_Premultiplied);
+QImage MainWindow::kmeans(vector <QColor> centers, int num, eType type) {
     if (num == 0)
         return segmented;
+    long long t0, t1 = 0, t2 = 0, t3 = getTime(0);
+    segmented = QImage(processed.size(), QImage::Format_ARGB32_Premultiplied);
     int w = processed.width(), h = processed.height();
     vector <QColor> clusterCenters(centers);
-    int K = static_cast<int>(centers.size());
-    vector< vector <unsigned char> > labels(w, vector<unsigned char>(h, 0));
-    for (int y = 0; y < h; ++y) {
-        QRgb *line = reinterpret_cast<QRgb *>(processed.scanLine(y));
-        for (int x = 0; x < w; ++x) {
-            QColor qc(line[x]);
-            double min_dist = colorDistance(clusterCenters[0], qc, type);
-            for (int k = 1; k < K; ++k) {
-                double distance = colorDistance(clusterCenters[k], qc, type);
-                if (distance < min_dist) {
-                    min_dist = distance;
-                    labels[x][y] = static_cast<unsigned char>(k);
-                }
-            }
-        }
+    fMat labClusterCenters;
+    vector <fMat> labImage;
+    void *image = type == LAB ? (void *)(&labImage) : (void *)(&processed);
+    void *cc = type == LAB ? (void *)(&labClusterCenters) : (void *)(&clusterCenters);
+    vector <QThread *> threads;
+    if (type == LAB) {
+        for (QColor qc : centers)
+            labClusterCenters.push_back(rgb2lab(qc));
+        labImage.resize(w, fMat(h, vector<float>(3, 0.0)));
+        for (int i = 0; i < threadCnt; ++i)
+            threads.push_back(QThread::create(toLab, &labImage, processed, i));
+        for (QThread * thread : threads)
+            thread->start();
+        toLab(&labImage, processed, -1);
+        for (int i = threadCnt - 1; i >= 0; --i)
+            if (threads[i]->isRunning())
+                threads[i]->wait();
     }
+    int K = toi(centers.size());
+    cMat labels(w, vector<unsigned char>(h, 0));
+    t0 = getTime(0);
+    getDistances(image, &labels, cc, type);
+    t1 += getTime(t0);
     for (int i = 0; i < num; ++i) {
+        t0 = getTime();
         for (int k = 0; k < K; ++k) {
             long mean_b = 0, mean_g = 0, mean_r = 0;
             int total = 0;
             int shift;
-            if (type == HSV)
+            if (type == HSV || type == HSL)
                 shift = 180 - (clusterCenters[k].hsvHue() + 1);
-            else if (type == HSL)
-                shift = 180 - (clusterCenters[k].hslHue() + 1);
             for (int y = 0; y < h; ++y) {
-                QRgb *line = reinterpret_cast<QRgb *>(processed.scanLine(y));
+                QRgb *line = type == LAB ? nullptr : reinterpret_cast<QRgb *>(processed.scanLine(y));
                 for (int x = 0; x < w; ++x) {
                     if (labels[x][y] == k) {
-                        QColor qc(line[x]);
                         if (type == RGB) {
+                            QColor qc(line[x]);
                             mean_r += qc.red();
                             mean_g += qc.green();
                             mean_b += qc.blue();
                         }
                         else if (type == HSV) {
+                            QColor qc(line[x]);
                             int hue = (qc.hsvHue() + 1) + shift;
                             if (hue > 360)
                                 hue -= 360;
@@ -460,6 +496,7 @@ QImage MainWindow::kmeans(vector<QColor> centers, int num, eType type) {
                             mean_b += qc.value();
                         }
                         else if (type == HSL) {
+                            QColor qc(line[x]);
                             int hue = (qc.hslHue() + 1) + shift;
                             if (hue > 360)
                                 hue -= 360;
@@ -469,6 +506,12 @@ QImage MainWindow::kmeans(vector<QColor> centers, int num, eType type) {
                             mean_g += qc.hslSaturation();
                             mean_b += qc.lightness();
                         }
+                        else if (type == LAB) {
+                            vector <float> lab = labImage[x][y];
+                            mean_r += lab[0];
+                            mean_g += lab[1];
+                            mean_b += lab[2];
+                        }
                         ++total;
                     }
                 }
@@ -477,66 +520,196 @@ QImage MainWindow::kmeans(vector<QColor> centers, int num, eType type) {
                 mean_r /= total;
                 mean_g /= total;
                 mean_b /= total;
-            }
-            if (type == RGB)
-                clusterCenters[k] = QColor(static_cast<int>(mean_r), static_cast<int>(mean_g), static_cast<int>(mean_b));
-            else if (type == HSV) {
-                QColor qc;
-                int hue = static_cast<int>(mean_r) - shift;
-                if (hue > 360)
-                    hue -= 360;
-                if (hue < 0)
-                    hue += 360;
-                qc.setHsv(hue - 1, mean_g, mean_b);
-                clusterCenters[k] = qc;
-            }
-            else if (type == HSL) {
-                QColor qc;
-                int hue = static_cast<int>(mean_r) - shift;
-                if (hue > 360)
-                    hue -= 360;
-                if (hue < 0)
-                    hue += 360;
-                qc.setHsl(hue - 1, mean_g, mean_b);
-                clusterCenters[k] = qc;
+                if (type == RGB)
+                    clusterCenters[k] = QColor(toi(mean_r), toi(mean_g), toi(mean_b));
+                else if (type == HSV) {
+                    QColor qc;
+                    int hue = toi(mean_r) - shift;
+                    if (hue > 360)
+                        hue -= 360;
+                    else if (hue < 0)
+                        hue += 360;
+                    qc.setHsv(hue - 1, mean_g, mean_b);
+                    clusterCenters[k] = qc;
+                }
+                else if (type == HSL) {
+                    QColor qc;
+                    int hue = toi(mean_r) - shift;
+                    if (hue > 360)
+                        hue -= 360;
+                    else if (hue < 0)
+                        hue += 360;
+                    qc.setHsl(hue - 1, mean_g, mean_b);
+                    clusterCenters[k] = qc;
+                }
+                else if (type == LAB) {
+                    labClusterCenters[k][0] = mean_r;
+                    labClusterCenters[k][1] = mean_g;
+                    labClusterCenters[k][2] = mean_b;
+                }
             }
         }
-        for (int y = 0; y < h; ++y) {
-            QRgb *line = reinterpret_cast<QRgb *>(processed.scanLine(y));
-            for (int x = 0; x < w; ++x) {
+        t2 += getTime(t0);
+        t0 = getTime(0);
+        getDistances(image, &labels, cc, type);
+        t1 += getTime(t0);
+        ui->statusbar->showMessage(QString(to_string(i).c_str()) + " iterations of " + QString(to_string(num).c_str()) + " completed");
+        void * clusters = type == LAB ? (void *)(&labClusterCenters) : (void *)(&clusterCenters);
+        toRGB(&toDisplay, labels, clusters, type);
+        repaint();
+        QApplication::processEvents();
+    }
+    void * clusters = type == LAB ? (void *)(&labClusterCenters) : (void *)(&clusterCenters);
+    toRGB(&segmented, labels, clusters, type);
+    t1 /= (K + 1);
+    t2 /= K;
+    cout << "Average Distancing Time: " << t1 << "ms" << endl;
+    cout << "Average Meaning Time: " << t2 << "ms" << endl;
+    cout << "Total kmeans time: " << getTime(t3) << "ms" << endl;
+    return segmented;
+}
+
+void MainWindow::getDistances(void *image, cMat *labels, void *cc, eType type) {
+    vector <QThread *> threads;
+    for (int i = 0; i < threadCnt; ++i)
+        threads.push_back(QThread::create(calcColorDistances, image, labels, cc, type, i));
+    for (QThread * thread : threads)
+        thread->start();
+    calcColorDistances(image, labels, cc, type, -1);
+    for (int i = threadCnt - 1; i >= 0; --i)
+        if (threads[i]->isRunning())
+            threads[i]->wait();
+}
+
+void MainWindow::calcColorDistances(void * image, cMat *labels, void * cc, eType type, int tIndex) {
+    QImage Processed;
+    vector <fMat> labImage;
+    vector <QColor> clusterCenters;
+    fMat labClusterCenters;
+    int width, height, K;
+    if (type == LAB) {
+        labImage = *(vector<fMat> *)(image);
+        labClusterCenters = *(fMat *)(cc);
+        width = toi(labImage.size());
+        height = toi(labImage[0].size());
+        K = toi(labClusterCenters.size());
+    }
+    else {
+        Processed = *(QImage *)(image);
+        clusterCenters = *(vector <QColor> *)(cc);
+        width = Processed.width();
+        height = Processed.height();
+        K = toi(clusterCenters.size());
+    }
+    int lines = height / threadCnt;
+    int start, end;
+    if (tIndex == -1) {
+        start = threadCnt * lines;
+        end = height;
+    }
+    else {
+        start = tIndex * lines;
+        end = start + lines;
+    }
+    if (type == LAB) {
+        for (int y = start; y < end; ++y)
+            for (int x = 0; x < width; ++x) {
+                double min_dist = colorDistance(labClusterCenters[0], labImage[x][y]);
+                for (int k = 1; k < K; ++k) {
+                    double distance = colorDistance(labClusterCenters[k], labImage[x][y]);
+                    if (distance < min_dist) {
+                        min_dist = distance;
+                        (*labels)[x][y] = toc(k);
+                    }
+                }
+            }
+    }
+    else {
+        for (int y = start; y < end; ++y) {
+            QRgb *line = reinterpret_cast<QRgb *>(Processed.scanLine(y));
+            for (int x = 0; x < width; ++x) {
                 QColor qc(line[x]);
                 double min_dist = colorDistance(clusterCenters[0], qc, type);
                 for (int k = 1; k < K; ++k) {
                     double distance = colorDistance(clusterCenters[k], qc, type);
                     if (distance < min_dist) {
                         min_dist = distance;
-                        labels[x][y] = static_cast<unsigned char>(k);
+                        (*labels)[x][y] = toc(k);
                     }
                 }
             }
         }
-        ui->statusbar->showMessage(QString(to_string(i).c_str()) + " iterations of " + QString(to_string(num).c_str()) + " completed");
-        vector <QRgb> colors;
-        for (QColor qc : clusterCenters)
-            colors.push_back(qc.rgba());
-        for (int y = 0; y < h; ++y) {
-            QRgb *line = reinterpret_cast<QRgb *>(segmented.scanLine(y));
-            for (int x = 0; x < w; ++x)
-                line[x] = colors[labels[x][y]];//segmented.setPixelColor(x, y, clusterCenters[labels[x][y]]);
+    }
+}
+
+double MainWindow::colorDistance(vector <float> m, vector <float> n) {
+    const double k_L = 1.0, k_C = 1.0, k_H = 1.0;
+    const double deg360InRad = 2.0 * pi;
+    const double deg180InRad = pi;
+    const double pow25To7 = 6103515625.0;
+    double C1 = sqrt((m[1] * m[1]) + (m[1] * m[1]));
+    double C2 = sqrt((n[1] * n[1]) + (n[2] * n[2]));
+    double barC = (C1 + C2) / 2.0;
+    double G = 0.5 * (1 - sqrt(pow(barC, 7) / (pow(barC, 7) + pow25To7)));
+    double a1Prime = (1.0 + G) * m[1];
+    double a2Prime = (1.0 + G) * n[1];
+    double CPrime1 = sqrt((a1Prime * a1Prime) + (m[2] * m[2]));
+    double CPrime2 = sqrt((a2Prime * a2Prime) + (n[2] * n[2]));
+    double hPrime1;
+    if (m[2] == 0 && a1Prime == 0)
+        hPrime1 = 0.0;
+    else {
+        hPrime1 = atan2(m[2], a1Prime);
+        if (hPrime1 < 0)
+            hPrime1 += deg360InRad;
+    }
+    double hPrime2;
+    if (n[2] == 0 && a2Prime == 0)
+        hPrime2 = 0.0;
+    else {
+        hPrime2 = atan2(n[2], a2Prime);
+        if (hPrime2 < 0)
+            hPrime2 += deg360InRad;
+    }
+    double deltaLPrime = n[0] - m[0];
+    double deltaCPrime = CPrime2 - CPrime1;
+    double deltahPrime;
+    double CPrimeProduct = CPrime1 * CPrime2;
+    if (CPrimeProduct == 0)
+        deltahPrime = 0;
+    else {
+        deltahPrime = hPrime2 - hPrime1;
+        if (deltahPrime < -deg180InRad)
+            deltahPrime += deg360InRad;
+        else if (deltahPrime > deg180InRad)
+            deltahPrime -= deg360InRad;
+    }
+    double deltaHPrime = 2.0 * sqrt(CPrimeProduct) * sin(deltahPrime / 2.0);
+    double barLPrime = (m[0] + n[0]) / 2.0;
+    double barCPrime = (CPrime1 + CPrime2) / 2.0;
+    double barhPrime, hPrimeSum = hPrime1 + hPrime2;
+    if (CPrime1 * CPrime2 == 0) {
+        barhPrime = hPrimeSum;
+    } else {
+        if (fabs(hPrime1 - hPrime2) <= deg180InRad)
+            barhPrime = hPrimeSum / 2.0;
+        else {
+            if (hPrimeSum < deg360InRad)
+                barhPrime = (hPrimeSum + deg360InRad) / 2.0;
+            else
+                barhPrime = (hPrimeSum - deg360InRad) / 2.0;
         }
-        toDisplay = segmented.copy();
-        repaint();
-        QApplication::processEvents();
     }
-    vector <QRgb> colors;
-    for (QColor qc : clusterCenters)
-        colors.push_back(qc.rgba());
-    for (int y = 0; y < h; ++y) {
-        QRgb *line = reinterpret_cast<QRgb *>(segmented.scanLine(y));
-        for (int x = 0; x < w; ++x)
-            line[x] = colors[labels[x][y]];
-    }
-    return segmented;
+    double rad30 = (30.0 / 180.0) * pi;
+    double T = 1.0 - (0.17 * cos(barhPrime - rad30)) + (0.24 * cos(2.0 * barhPrime)) + (0.32 * cos((3.0 * barhPrime) + (6.0 / 180.0) * pi)) - (0.20 * cos((4.0 * barhPrime) - (63.0 / 180.0) * pi));
+    double deltaTheta = rad30 * exp(-pow((barhPrime - (275.0 / 180.0) * pi) / ((25.0 / 180.0) * pi), 2.0));
+    double R_C = 2.0 * sqrt(pow(barCPrime, 7.0) / (pow(barCPrime, 7.0) + pow25To7));
+    double S_L = 1 + ((0.015 * pow(barLPrime - 50.0, 2.0)) / sqrt(20 + pow(barLPrime - 50.0, 2.0)));
+    double S_C = 1 + (0.045 * barCPrime);
+    double S_H = 1 + (0.015 * barCPrime * T);
+    double R_T = (-sin(2.0 * deltaTheta)) * R_C;
+    double deltaE = sqrt(pow(deltaLPrime / (k_L * S_L), 2.0) + pow(deltaCPrime / (k_C * S_C), 2.0) + pow(deltaHPrime / (k_H * S_H), 2.0) + (R_T * (deltaCPrime / (k_C * S_C)) * (deltaHPrime / (k_H * S_H))));
+    return deltaE;
 }
 
 int MainWindow::colorDistance(QColor m, QColor n, eType type) {
@@ -563,70 +736,65 @@ int MainWindow::colorDistance(QColor m, QColor n, eType type) {
     return pow(a, 2) + pow(b, 2) + pow(c, 2);
 }
 
-vector<float> MainWindow::rgb2lab(QColor qc) {
-    // D65/2°
-    float xyzRef[3] = {95.047, 100.0, 108.883};
-    // rgb to xyz
-    float rgb[3] = {qc.redF(), qc.greenF(), qc.blueF()};
-    for (unsigned char i = 0; i < 3; ++i) {
-        if (rgb[i] > 0.04045f)
-            rgb[i] = pow((rgb[i] + 0.055f) / 1.055f, 2.4f);
-        else
-            rgb[i] /= 12.92f;
-        rgb[i] *= 100.0f;
+void MainWindow::toLab(vector <fMat> *lab, QImage rgb, int tIndex) {
+    int width = rgb.width(), height = rgb.height();
+    int lines = height / threadCnt;
+    int start, end;
+    if (tIndex == -1) {
+        start = threadCnt * lines;
+        end = height;
     }
-    float xyz[3] = {0.0f};
-    xyz[0] = 0.4124 * rgb[0] + 0.3576 * rgb[1] + 0.1805 * rgb[2];
-    xyz[1] = 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2];
-    xyz[2] = 0.0193 * rgb[0] + 0.1192 * rgb[1] + 0.9505 * rgb[2];
-    // xyz to lab
-    for (unsigned char i = 0; i < 3; ++i) {
-        xyz[i] /= xyzRef[i];
-        if (xyz[i] > 0.008856)
-            xyz[i] = pow(xyz[i], 1.0 / 3.0);
-        else
-            xyz[i] = (7.787 * xyz[i]) + 16.0 / 116.0;
+    else {
+        start = tIndex * lines;
+        end = start + lines;
     }
-    return vector<float>({116.0f * xyz[1] - 16.0f, 500.0f * (xyz[0] - xyz[1]), 200.0f * (xyz[1] - xyz[2])});
+    for (int y = start; y < end; ++y) {
+        QRgb *line = reinterpret_cast<QRgb *>(rgb.scanLine(y));
+        for (int x = 0; x < width; ++x)
+            (*lab)[x][y] = rgb2lab(line[x]);
+    }
 }
 
-QColor MainWindow::lab2rgb(vector<float> lab) {
-    // D65/2°
-    float xyzRef[3] = {95.047f, 100.0f, 108.883f};
-    // lab to xyz
-    float xyz[3] = {0.0f};
-    xyz[1] = (lab[0] + 16.0f) / 116.0f;
-    xyz[0] = lab[1] / 500.0f + xyz[1];
-    xyz[2] = xyz[1] - lab[2] / 200.0f;
-    for (unsigned char i = 0; i < 3; ++i) {
-        if (pow(xyz[i], 3.0f) > 0.008856f)
-            xyz[i] = pow(xyz[i], 3.0f);
-        else
-            xyz[i] = (xyz[i] - 16.0f / 116.0f) / 7.787f;
-        xyz[i] *= xyzRef[i];
-    }
-    // xyz to rgb
-    float rgb[3] = {0.0f};
-    rgb[0] = xyz[0] *  3.2406f + xyz[1] * -1.5372f + xyz[2] * -0.4986f;
-    rgb[1] = xyz[0] * -0.9689f + xyz[1] *  1.8758f + xyz[2] *  0.0415f;
-    rgb[2] = xyz[0] *  0.0557f + xyz[1] * -0.2040f + xyz[2] *  1.0570f;
-    for (unsigned char i = 0; i < 3; ++i) {
-        rgb[i] /= 100.0f;
-        if (rgb[i] > 0.0031308)
-            rgb[i] = 1.055 * pow(rgb[i], 1.0 / 2.4) - 0.055;
-        else
-            rgb[i] *= 12.92;
-    }
-    QColor qc;
-    qc.setRgbF(rgb[0], rgb[1], rgb[2]);
-    return qc;
+void MainWindow::toRGB(QImage *out, cMat labels, void *clusters, eType type) {
+    vector <QThread *> threads;
+    for (int i = 0; i < threadCnt; ++i)
+        threads.push_back(QThread::create(convert, out, labels, clusters, type, i));
+    for (QThread * thread : threads)
+        thread->start();
+    convert(out, labels, clusters, type, -1);
+    for (int i = threadCnt - 1; i >= 0; --i)
+        if (threads[i]->isRunning())
+            threads[i]->wait();
 }
 
-vector <float> MainWindow::getLabScaled(vector <float> lab) {
-    vector <float> ret = lab;
-    for (unsigned char i = 0; i < 3; ++i)
-        ret[i] = scales[i] * (ret[i] - mins[i]);
-    return ret;
+void MainWindow::convert(QImage *out, cMat labels, void *clusters, eType type, int tIndex) {
+    vector <QRgb> colors;
+    if (type == LAB) {
+        fMat labClusterCenters = *(fMat *)(clusters);
+        for (vector <float> c : labClusterCenters)
+            colors.push_back(lab2rgb(c).rgba());
+    }
+    else {
+        vector <QColor> clusterCenters = *(vector <QColor> *)(clusters);
+        for (QColor qc : clusterCenters)
+            colors.push_back(qc.rgba());
+    }
+    int width = out->width(), height = out->height();
+    int lines = height / threadCnt;
+    int start, end;
+    if (tIndex == -1) {
+        start = threadCnt * lines;
+        end = height;
+    }
+    else {
+        start = tIndex * lines;
+        end = start + lines;
+    }
+    for (int y = start; y < end; ++y) {
+        QRgb *line = reinterpret_cast<QRgb *>(out->scanLine(y));
+        for (int x = 0; x < width; ++x)
+            line[x] = colors[labels[x][y]];
+    }
 }
 
 

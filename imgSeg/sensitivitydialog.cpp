@@ -25,12 +25,12 @@ void sensitivityDialog::setWork(QImage toProcess, eType t) {
 
 void sensitivityDialog::on_spinbox_valueChanged(double value) {
     val = value;
-    ui->slider->setValue(static_cast<int>(10.0 * value));
+    ui->slider->setValue(toi(10.0 * value));
     process();
 }
 
 void sensitivityDialog::on_slider_valueChanged(int value) {
-    val = static_cast<double>(value) / 10.0;
+    val = tod(value) / 10.0;
     ui->spinbox->setValue(val);
     process();
 }
@@ -38,9 +38,9 @@ void sensitivityDialog::on_slider_valueChanged(int value) {
 void sensitivityDialog::process() {
     if (lock)
         return;
-    ++count;
     lock = 1;
-    float extrema = static_cast<double>(val);
+    ++count;
+    float extrema = tod(val);
     long long time = getTime(0);
     int end = type == RGB ? 4 : 3;
     int H = 3 * bins;
@@ -50,30 +50,37 @@ void sensitivityDialog::process() {
     vector <vector <float> > histo(4, vector<float>(bins, 0.0f));
     QImage image = qi.copy();
     int total = 0;
-    for (int x = 0; x < image.width(); ++x)
-        for (int y = 0; y < image.height(); ++y) {
-            QColor qc = image.pixelColor(x, y);
+    for (int y = 0; y < image.height(); ++y) {
+        QRgb *line = reinterpret_cast<QRgb *>(image.scanLine(y));
+        for (int x = 0; x < image.width(); ++x) {
+            QColor qc(line[x]);
             if (qc.alpha() != 0) {
                 if (type == RGB) {
-                    int intensity = static_cast<int>(static_cast<float>(qc.red() + qc.green() + qc.blue()) / 3.0 + 0.5);
+                    int intensity = toi(tof(qc.red() + qc.green() + qc.blue()) / 3.0 + 0.5);
                     ++histo[0][intensity];
                     ++histo[1][qc.red()];
                     ++histo[2][qc.green()];
                     ++histo[3][qc.blue()];
                 }
                 else if (type == HSV) {
-                    ++histo[0][static_cast<int>(255.0 * static_cast<float>(qc.hsvHue() + 1.0) / 360.0)];
-                    ++histo[1][static_cast<int>(255.0 * qc.hsvSaturationF())];
-                    ++histo[2][static_cast<int>(255.0 * qc.valueF())];
+                    ++histo[0][toi(255.0 * tof(qc.hsvHue() + 1.0) / 360.0)];
+                    ++histo[1][toi(255.0 * qc.hsvSaturationF())];
+                    ++histo[2][toi(255.0 * qc.valueF())];
                 }
-                else {
-                    ++histo[0][static_cast<int>(255.0 * static_cast<float>(qc.hslHue() + 1.0) / 360.0)];
-                    ++histo[1][static_cast<int>(255.0 * qc.hslSaturationF())];
-                    ++histo[2][static_cast<int>(255.0 * qc.lightnessF())];
+                else if (type == HSL) {
+                    ++histo[0][toi(255.0 * tof(qc.hslHue() + 1.0) / 360.0)];
+                    ++histo[1][toi(255.0 * qc.hslSaturationF())];
+                    ++histo[2][toi(255.0 * qc.lightnessF())];
+                }
+                else if (type == LAB) {
+                    vector <float> color = getLabScaled(rgb2lab(qc));
+                    for (unsigned char c = 0; c < 3; ++c)
+                        ++histo[c][toi(color[c])];
                 }
                 ++total;
             }
         }
+    }
     //smooth histograms for peak detection
     for (int j = 0; j < end; ++j)
         for (int i = 0; i < bins; ++i) {
@@ -115,12 +122,12 @@ void sensitivityDialog::process() {
             minMag = x[minMagIdx];
             leftMin = x[0] < x0[0] ? x[0] : x0[0];
         }
-        int len = x.size();
+        int len = toi(x.size());
         if (len > 2) {
             float tempMag = minMag;
             bool foundPeak = false;
             int ii = x[0] >= x[1] ? 0 : 1;
-            float maxPeaks = ceil(static_cast<float>(len) / 2.0);
+            float maxPeaks = ceil(tof(len) / 2.0);
             vector <int> peakLoc(maxPeaks, 0);
             vector <float> peakMag(maxPeaks, 0.0);
             int cInd = 1;
@@ -182,7 +189,7 @@ void sensitivityDialog::process() {
                 if (abs(peaks[i][j] - peaks[i][j + 1]) <= 1)
                     peaks[i].erase(peaks[i].begin() + j + 1);
     }
-    int Min = static_cast<int>(min(min(peaks[adder].size(), peaks[adder + 1].size()), peaks[adder + 2].size()));
+    int Min = toi(min(min(peaks[adder].size(), peaks[adder + 1].size()), peaks[adder + 2].size()));
     if (Min != 0) {
         for (int i = adder; i < end; ++i) {
             // midpoint between the closest peaks
@@ -207,63 +214,79 @@ void sensitivityDialog::process() {
         }
     }
     centers.clear();
-    if (type == RGB)
-        for (int i = 0; i < Min; ++i)
-            centers.push_back(QColor(peaks[1][i], peaks[2][i], peaks[3][i]));
-    else if (type == HSV)
-        for (int i = 0; i < Min; ++i) {
-            QColor qc;
-            qc.setHsvF(static_cast<float>(peaks[0][i]) / 255.0, static_cast<float>(peaks[1][i]) / 255.0, static_cast<float>(peaks[2][i]) / 255.0);
-            centers.push_back(qc);
-        }
-    else if (type == HSL)
-        for (int i = 0; i < Min; ++i) {
-            QColor qc;
-            qc.setHslF(static_cast<float>(peaks[0][i]) / 255.0, static_cast<float>(peaks[1][i]) / 255.0, static_cast<float>(peaks[2][i]) / 255.0);
-            centers.push_back(qc);
-        }
+    for (int i = 0; i < Min; ++i) {
+        QColor qc;
+        if (type == RGB)
+            qc = QColor(peaks[1][i], peaks[2][i], peaks[3][i]);
+        else if (type == HSV)
+            qc.setHsvF(tof(peaks[0][i]) / 255.0, tof(peaks[1][i]) / 255.0, tof(peaks[2][i]) / 255.0);
+        else if (type == HSL)
+            qc.setHslF(tof(peaks[0][i]) / 255.0, tof(peaks[1][i]) / 255.0, tof(peaks[2][i]) / 255.0);
+        else if (type == LAB)
+            qc = lab2rgb(getLabDescaled(peaks[0][i], peaks[1][i], peaks[2][i]));
+        centers.push_back(qc);
+    }
     t1 += getTime(time);
     int maxI = 0, cutoff = total / 4;
     for (int j = 0; j < end; ++j)
         for (int i = 1; i < bins - 1; ++i)
             if (histo[j][i] < cutoff)
-                maxI = max(maxI, static_cast<int>(histo[j][i]));
+                maxI = max(maxI, toi(histo[j][i]));
     // Draw histograms.
-    double div = static_cast<double>(H / 2 - 1) / static_cast<double>(maxI);
-    float fbins = static_cast<float>(bins - 1);
+    double div = tod(H / 2 - 1) / tod(maxI);
+    float fbins = tof(bins - 1);
     for (int x = 0; x < bins; ++x) {
         QRgb value = static_cast<QRgb>(bins + x) / 2;
         for (int j = 0; j < end; ++j) {
             QRgb color = 0xFF000000;
-            if (type == RGB && j != 0)
-                color += (value << (8 * (2 - (j - 1))));
-            else if (type == HSV && j == 0) {
-                QColor qc(color);
-                qc.setHsvF(static_cast<float>(x) / fbins, 1.0, 1.0);
-                color = qc.rgba();
+            if (type == RGB) {
+                if (j != 0)
+                    color += (value << (8 * (2 - (j - 1))));
+                else
+                    for (unsigned char i = 0; i < 3; ++i)
+                        color += value << (8 * i);
             }
-            else if (type == HSL && j == 0) {
+            else if (type == HSV) {
                 QColor qc(color);
-                qc.setHslF(static_cast<float>(x) / fbins, 1.0, 0.5);
-                color = qc.rgba();
+                if (j == 0) {
+                    qc.setHsvF(tof(x) / fbins, 1.0f, 1.0f);
+                    color = qc.rgba();
+                }
+                else if (j == 1) {
+                    qc.setHsvF(0.3f, tof(x) / fbins, 1.0f);
+                    color = qc.rgba();
+                }
+                else
+                    for (unsigned char i= 0; i < 3; ++i)
+                        color += value << (8 * i);
             }
-            else if (type == HSV && j == 1) {
+            else if (type == HSL) {
                 QColor qc(color);
-                qc.setHsvF(0.3, static_cast<float>(x) / fbins, 1.0);
-                color = qc.rgba();
+                if (j == 0) {
+                    qc.setHslF(tof(x) / fbins, 1.0, 0.5);
+                    color = qc.rgba();
+                }
+                else if (j == 1) {
+                    qc.setHslF(0.3f, tof(x) / fbins, 0.5f);
+                    color = qc.rgba();
+                }
+                else
+                    for (unsigned char i= 0; i < 3; ++i)
+                        color += value << (8 * i);
             }
-            else if (type == HSL && j == 1) {
-                QColor qc(color);
-                qc.setHslF(0.3, static_cast<float>(x) / fbins, 0.5);
-                color = qc.rgba();
+            else if (type == LAB) {
+                if (j == 0)
+                    for (unsigned char i= 0; i < 3; ++i)
+                        color += value << (8 * i);
+                else if (j == 1)
+                    color = QColor(255 - x, x, 0).rgba();
+                else
+                    color = QColor(255 - x, 255 - x, x).rgba();
             }
-            else if ((type == RGB && j == 0) || (type != RGB && j == 2))
-                for (unsigned char i= 0; i < 3; ++i)
-                    color += value << (8 * i);
             int rowOffset = (H / 2) * (j / 2);
             int colOffset = x + bins * (j % 2);
             int stop = H / 2 + rowOffset;
-            int start = stop - static_cast<int>(static_cast<double>(histo[j][x]) * div);
+            int start = stop - toi(tod(histo[j][x]) * div);
             start = max(start, rowOffset);
             for (int peak : peaks[j])
                 if (peak == x) {
@@ -298,7 +321,7 @@ void sensitivityDialog::on_buttonBox_rejected() {
     done(0);
 }
 
-vector<QColor> sensitivityDialog::getPoints() {
+vector <QColor> sensitivityDialog::getPoints() {
     return centers;
 }
 

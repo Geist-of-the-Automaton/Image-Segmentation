@@ -34,10 +34,13 @@ public:
     void histogram(eType type);
     static void applyBlur(QImage processed, QImage *work, QImage edL, int tIndex, int passes);
     QImage kmeans(vector <QColor> centers, int iterations, eType type);
+    void getDistances(void * image, cMat *labels, void * cc, eType type);
     static int colorDistance(QColor m, QColor n, eType type);
-    static vector <float> rgb2lab (QColor qc);
-    static QColor lab2rgb(vector <float> lab);
-    static vector <float> getLabScaled(vector <float> lab);
+    static double colorDistance(vector <float> m, vector <float>);
+    static void calcColorDistances(void * image, cMat *labels, void * cc, eType type, int tIndex);
+    static void toLab(vector <fMat> *lab, QImage rgb, int tIndex);
+    static void toRGB(QImage *out, cMat labels, void *clusters, eType type);
+    static void convert(QImage *out, cMat labels, void * clusters, eType type, int tIndex);
     ~MainWindow();
 
 private:
