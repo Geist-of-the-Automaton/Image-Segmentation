@@ -13,6 +13,7 @@
 #include <QThread>
 
 #include <sensitivitydialog.h>
+#include <segcleaner.h>
 #include <predefs.h>
 
 QT_BEGIN_NAMESPACE
@@ -39,14 +40,14 @@ public:
     static double colorDistance(vector <float> m, vector <float>);
     static void calcColorDistances(void * image, cMat *labels, void * cc, eType type, int tIndex);
     static void toLab(vector <fMat> *lab, QImage rgb, int tIndex);
-    static void toRGB(QImage *out, cMat labels, void *clusters, eType type);
-    static void convert(QImage *out, cMat labels, void * clusters, eType type, int tIndex);
+    static vector <QRgb> toRGB(QImage *out, cMat labels, void *clusters, eType type);
+    static void convert(QImage *out, cMat labels, vector <QRgb> colors, int tIndex);
     ~MainWindow();
 
 private:
     Ui::MainWindow *ui;
 
-    QImage og, edL, ogEd, combo, processed, toDisplay, work, segmented;
+    QImage og, edL, ogEd, combo, processed, toDisplay, work, segmented, cleanSeg;
     QLabel *histograms;
     int passes;
     QString filename;
@@ -54,5 +55,7 @@ private:
     int w, h;
     int view;
     float dispScale;
+    cMat cleanMat;
+    vector <QRgb> colors;
 };
 #endif // MAINWINDOW_H

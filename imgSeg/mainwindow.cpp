@@ -70,10 +70,20 @@ void MainWindow::keyPressEvent(QKeyEvent *event) {
     }
     else if (key == Qt::Key_7)
         toDisplay = segmented;
+    else if (key == Qt::Key_8 && !colors.empty()) {
+        segCleaner sc(this);
+        sc.setWork(&cleanSeg, cleanMat, colors);
+        sc.exec();
+        toDisplay = cleanSeg;
+    }
+    else if (key == Qt::Key_9)
+        toDisplay = cleanSeg;
     else if (key == Qt::Key_Alt)
         toDisplay.save(filename + "_view_" + views[view] + "_" + to_string(passes).c_str() + ".png");
-    else if (key == Qt::Key_Space)
+    else if (key == Qt::Key_Space) {
         compute();
+        cleanSeg = segmented = processed.copy();
+    }
     else if (key == Qt::Key_Control) {
         bool ok = false;
         int ret = QInputDialog::getInt(this, "8810", "Process cycles to complete", 0, 0, 100, 1, &ok);
@@ -82,6 +92,7 @@ void MainWindow::keyPressEvent(QKeyEvent *event) {
                 ui->statusbar->showMessage(QString(to_string(passes).c_str()) + " cycles of " + QString(to_string(passes + (ret - i)).c_str()) + " completed");
                 compute();
             }
+        cleanSeg = segmented = processed.copy();
         cout << "batch complete" << endl;
         QApplication::beep();
     }
@@ -106,6 +117,7 @@ void MainWindow::keyPressEvent(QKeyEvent *event) {
         h = og.height();
         edL_p = iMat (w, vector<int>(h, 0));
         edL = QImage(w, h, QImage::Format_ARGB32_Premultiplied);
+        segmented = cleanSeg = edL;
         compute();
         toDisplay = og;
     }
@@ -560,7 +572,8 @@ QImage MainWindow::kmeans(vector <QColor> centers, int num, eType type) {
         QApplication::processEvents();
     }
     void * clusters = type == LAB ? (void *)(&labClusterCenters) : (void *)(&clusterCenters);
-    toRGB(&segmented, labels, clusters, type);
+    colors = toRGB(&segmented, labels, clusters, type);
+    cleanMat = labels;
     t1 /= (K + 1);
     t2 /= K;
     cout << "Average Distancing Time: " << t1 << "ms" << endl;
@@ -755,19 +768,8 @@ void MainWindow::toLab(vector <fMat> *lab, QImage rgb, int tIndex) {
     }
 }
 
-void MainWindow::toRGB(QImage *out, cMat labels, void *clusters, eType type) {
+vector <QRgb> MainWindow::toRGB(QImage *out, cMat labels, void *clusters, eType type) {
     vector <QThread *> threads;
-    for (int i = 0; i < threadCnt; ++i)
-        threads.push_back(QThread::create(convert, out, labels, clusters, type, i));
-    for (QThread * thread : threads)
-        thread->start();
-    convert(out, labels, clusters, type, -1);
-    for (int i = threadCnt - 1; i >= 0; --i)
-        if (threads[i]->isRunning())
-            threads[i]->wait();
-}
-
-void MainWindow::convert(QImage *out, cMat labels, void *clusters, eType type, int tIndex) {
     vector <QRgb> colors;
     if (type == LAB) {
         fMat labClusterCenters = *(fMat *)(clusters);
@@ -779,6 +781,18 @@ void MainWindow::convert(QImage *out, cMat labels, void *clusters, eType type, i
         for (QColor qc : clusterCenters)
             colors.push_back(qc.rgba());
     }
+    for (int i = 0; i < threadCnt; ++i)
+        threads.push_back(QThread::create(convert, out, labels, colors, i));
+    for (QThread * thread : threads)
+        thread->start();
+    convert(out, labels, colors, -1);
+    for (int i = threadCnt - 1; i >= 0; --i)
+        if (threads[i]->isRunning())
+            threads[i]->wait();
+    return colors;
+}
+
+void MainWindow::convert(QImage *out, cMat labels, vector <QRgb> colors, int tIndex) {
     int width = out->width(), height = out->height();
     int lines = height / threadCnt;
     int start, end;
