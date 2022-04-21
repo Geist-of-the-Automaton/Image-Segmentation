@@ -1,5 +1,6 @@
 import cv2
 import numpy as np
+import matplotlib.pyplot as plt
 import os
 import argparse
 import time
@@ -47,13 +48,12 @@ def kmeans_segment(args):
     best_center = np.uint8(best_center)
     segimg_array = best_center[best_labels.flatten()]
     segimg_array = segimg_array.reshape((image_array.shape))
-
     return (f"new_{args.infile}", segimg_array, elapsed, imgGB/elapsed, bestK)
 
 def main(args):
     output = kmeans_segment(args)
     with open(f"{args.outdir}/diagnostics.txt", "a+") as f:
-        cv2.imwrite(f"{args.outdir}/{output[0]}", output[1])
+        plt.imsave(f"{args.outdir}/{output[0]}", output[1])
         f.write(f"{output[0]},{output[2]},{output[3]},{output[4]}\n")
 
 if __name__ == "__main__":
