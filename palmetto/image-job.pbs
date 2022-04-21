@@ -1,0 +1,15 @@
+#PBS -N Segmentation_Logs
+#PBS -l select=4:ncpus=8:mem=30gb,walltime=00:05:00
+
+module add gnu-parallel/20200722
+
+cd $PBS_O_WORKDIR
+cat $PBS_NODEFILE > nodes.txt
+mkdir output
+start_time=$(date +%s)
+ls ./input/ | parallel --sshloginfile nodes.txt -j4 'module add python/3.10.3-gcc/8.4.1; cd Image-Segmentation/palmetto; python MultiImageSeg.py --infile {} --outdir output'
+end_time=$(date +%s)
+elapsed=$(( end_time - start_time ))
+echo "Total Elapsed: $elapsed" >> output/diagnostics.txt
+rm nodes.txt
+
