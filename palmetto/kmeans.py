@@ -34,7 +34,7 @@ def main(args):
     # some performance metrics
     elapsed = end-start
     # total problem size is equal to the number of bytes in image * K clustering attempts * # of internal loops
-    imgB = pixel_array.size * 32 * maxK * 10
+    imgB = pixel_array.size * 4 * maxK * args.kloops
     imgGB = imgB / (1e9)
     print("Elapsed Time for Clustering: "+str(elapsed))
     print("Clustering Throughput (GB/S): "+str(imgGB/elapsed))

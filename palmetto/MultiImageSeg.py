@@ -41,7 +41,7 @@ def kmeans_segment(args):
     end = time.time()
 
     elapsed = end-start
-    imgB = pixel_array.size * 32 * maxK * 10
+    imgB = pixel_array.size * 4 * maxK * kloops
     imgGB = imgB / (1e9)
 
     best_center = np.uint8(best_center)
