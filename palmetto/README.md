@@ -21,5 +21,5 @@ On palmetto, the software stack is less flexible and limited in your ability to 
 To run the job, type "qsub image-job.pbs" on the login-node.
 
 Currently, the script will reserve 4 of the lower-strength nodes, but you can change this for more throughput.
-The script will take all of the inputs in the "input" folder and process them through these nodes. The results are then stored in a new folder called "output". The output folder will also contain a file called "diagnostics.txt", which stores the elapsed time to run each iamge.
+The script will take all of the inputs in the "input" folder and process them through these nodes. The results are then stored in a new folder called "output". The output folder will also contain a file called "diagnostics.txt", which stores the elapsed time to run each image.
 Once you finish running the script, please edit/remove the output directory so that when the script runs again, it does not override the prior results.
