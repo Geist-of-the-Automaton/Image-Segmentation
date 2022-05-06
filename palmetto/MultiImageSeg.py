@@ -45,13 +45,13 @@ def kmeans_segment(args):
     best_center = np.uint8(best_center)
     segimg_array = best_center[best_labels.flatten()]
     segimg_array = segimg_array.reshape((image_array.shape))
-    return (segimg_array, elapsed, imgGB/elapsed, bestK)
+    return (segimg_array, start, end, imgGB, elapsed, imgGB/elapsed, bestK)
 
 def main(args):
     output = kmeans_segment(args)
     with open(f"{args.outdir}/diagnostics.txt", "a+") as f:
         plt.imsave(f"{args.outdir}/new_{args.infile}", output[0])
-        f.write(f"{args.infile},{output[1]},{output[2]},{output[3]}\n")
+        f.write(f"{args.infile},{output[1]},{output[2]},{output[3]},{output[4]},{output[5]},{output[6]}\n")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
