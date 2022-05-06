@@ -18,10 +18,8 @@ On palmetto, the software stack is less flexible and limited in your ability to 
 # Palmetto Cluster Job (image-job.pbs and MultiImageSeg.py)
 
 ## Running Instructions:
-(As of right now, I am using pip to manage the Python Libraries. I will add support for Anaconda in a future update).
 To run the job, type "qsub image-job.pbs" on the login-node.
+
 Currently, the script will reserve 4 of the lower-strength nodes, but you can change this for more throughput.
 The script will take all of the inputs in the "input" folder and process them through these nodes. The results are then stored in a new folder called "output". The output folder will also contain a file called "diagnostics.txt", which stores the elapsed time to run each iamge.
 Once you finish running the script, please edit/remove the output directory so that when the script runs again, it does not override the prior results.
-
-Note: Parallelism only works on an image-by-image basis. In other words, the script runs on an entire directory of image, not individually. If time permits, I may try to upgrade the parallelism to a finer granularity by adding multi-threading to the Python script.
