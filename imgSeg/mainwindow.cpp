@@ -93,10 +93,18 @@ void MainWindow::keyPressEvent(QKeyEvent *event) {
                 compute();
             }
         cleanSeg = segmented = processed.copy();
+        for (int i = 0; i < 5; ++i)
+            times[i] /= ret;
+        cout << "avg initialization took " << times[0] << "ms" << endl;
+        cout << "avg edge detection took " << times[1] << "ms" << endl;
+        cout << "avg equalization took " << times[2] << "ms" << endl;
+        cout << "avg trimming took " << times[3] << "ms" << endl;
+        cout << "avg blurring took " << times[4] << "ms" << endl;
         cout << "batch complete" << endl;
         QApplication::beep();
     }
     else if (key == Qt::Key_Shift) {
+        cout << threadCnt << endl;
         passes = 1;
         string formats = "";
         for (string s : acceptedImportImageFormats)
@@ -111,7 +119,7 @@ void MainWindow::keyPressEvent(QKeyEvent *event) {
         filename = fn.substr(0, index).c_str();
         string fileType = fn.substr(index + 1);
         if (std::find(acceptedImportImageFormats.begin(), acceptedImportImageFormats.end(), fileType) != acceptedImportImageFormats.end())
-        og = QImage(fileName);
+        og = QImage(fileName).scaled(1920, 1080, Qt::AspectRatioMode::IgnoreAspectRatio, Qt::TransformationMode::SmoothTransformation);
         processed = og.copy();
         w = og.width();
         h = og.height();
@@ -176,7 +184,8 @@ void MainWindow::compute() {
             edL_p[i][j] = (qc.red() + qc.green() + qc.blue()) / 3;
         }
     }
-    cout << "edL_p initialization took " << getTime(time) << "ms" << endl;
+    times[0] += getTime(time);
+    //cout << "edL_p initialization took " << getTime(time) << "ms" << endl;
     time = getTime(0);
     for (int j = 0; j < h; ++j) {
         QRgb *line = reinterpret_cast<QRgb *>(edL.scanLine(j));
@@ -198,10 +207,12 @@ void MainWindow::compute() {
             line[i] = 0xFF000000 | (lit << 16) | (lit << 8) | lit;
         }
     }
-    cout << "edge detection took " << getTime(time) << "ms" << endl;
+    times[1] += getTime(time);
+    //cout << "edge detection took " << getTime(time) << "ms" << endl;
     time = getTime(0);
     edL = equalize(edL);
-    cout << "equalization took " << getTime(time) << "ms" << endl;
+    times[2] += getTime(time);
+    //cout << "equalization took " << getTime(time) << "ms" << endl;
     time = getTime(0);
     for (int j = 0; j < h; ++j) {
         QRgb *line = reinterpret_cast<QRgb *>(edL.scanLine(j));
@@ -209,7 +220,8 @@ void MainWindow::compute() {
             if (QColor(line[i]).red() < (256 >> oShift))
                 line[i] = 0xFF000000;
     }
-    cout << "trimming took " << getTime(time) << "ms" << endl;
+    times[3] += getTime(time);
+    //cout << "trimming took " << getTime(time) << "ms" << endl;
     if (passes == 1)
         ogEd = edL.copy();
     time = getTime(0);
@@ -223,7 +235,8 @@ void MainWindow::compute() {
     for (int i = threadCnt - 1; i >= 0; --i)
         if (threads[i]->isRunning())
             threads[i]->wait();
-    cout << "blurring took " << getTime(time) << "ms" << endl;
+    times[4] += getTime(time);
+    //cout << "blurring took " << getTime(time) << "ms" << endl;
     processed = work.copy();
     ++passes;
     toDisplay = processed.copy();

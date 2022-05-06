@@ -39,7 +39,7 @@ using std::chrono::milliseconds;
 #define tod static_cast<double>
 #define toc static_cast<unsigned char>
 
-const int threadCnt = QThread::idealThreadCount();
+const int threadCnt = 1;//QThread::idealThreadCount();
 const iMat sobel = {{-1, -2, -1},
                     {0,   0,  0},
                     {1,   2,  1}};
